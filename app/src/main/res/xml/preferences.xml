@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<android.support.v7.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <android.support.v7.preference.CheckBoxPreference
+        android:defaultValue="false"
+        android:key="heads_up_click"
+        android:summary="@string/heads_up_click_summary"
+        android:title="@string/heads_up_click_title" />
+
+    <android.support.v7.preference.CheckBoxPreference
+        android:defaultValue="false"
+        android:key="notification_long_click"
+        android:summary="@string/notification_long_click_summary"
+        android:title="@string/notification_long_click_title" />
+
+    <android.support.v7.preference.CheckBoxPreference
+        android:defaultValue="false"
+        android:key="quick_settings_long_click"
+        android:summary="@string/quick_settings_long_click_summary"
+        android:title="@string/quick_settings_long_click_title" />
+
+</android.support.v7.preference.PreferenceScreen>

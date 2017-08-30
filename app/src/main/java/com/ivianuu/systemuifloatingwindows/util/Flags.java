@@ -1,4 +1,4 @@
-package com.ivianuu.systemuifloatingwindows;
+package com.ivianuu.systemuifloatingwindows.util;
 
 /**
  * Flags

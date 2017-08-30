@@ -1,4 +1,4 @@
-package com.ivianuu.systemuifloatingwindows;
+package com.ivianuu.systemuifloatingwindows.xposed;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
@@ -16,11 +16,15 @@ import android.view.animation.Interpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 
+import com.ivianuu.systemuifloatingwindows.R;
+import com.ivianuu.systemuifloatingwindows.util.Flags;
+import com.ivianuu.systemuifloatingwindows.util.PrefKeys;
+import com.ivianuu.systemuifloatingwindows.util.Util;
+
 import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XC_MethodReplacement;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
-import static com.ivianuu.systemuifloatingwindows.XLogger.log;
+import static com.ivianuu.systemuifloatingwindows.util.XLogger.log;
 import static de.robv.android.xposed.XposedBridge.hookAllConstructors;
 import static de.robv.android.xposed.XposedBridge.hookAllMethods;
 import static de.robv.android.xposed.XposedHelpers.callMethod;
@@ -95,6 +99,13 @@ final class SystemUiHooks {
             @SuppressLint("WrongConstant")
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                if (!XposedInit.getPrefs().getBoolean(PrefKeys.HEADS_UP_CLICK, false)) {
+                    log("heads up click disabled");
+                    return;
+                }
+
+                log("heads up click enabled");
+
                 Object headsUpManager = getObjectField(baseStatusBar, "mHeadsUpManager");
                 // check if the heads up notification is clicked
                 if ((Boolean) callMethod(
@@ -115,6 +126,7 @@ final class SystemUiHooks {
                     // open notification
                     try {
                         contentIntent.send(context, 0, overlay);
+                        param.setResult(null);
                         log("opening floating window from heads up");
                     } catch (Exception e) {
                         e.printStackTrace();
@@ -131,10 +143,15 @@ final class SystemUiHooks {
 
         // hook long press
         // this will called on long press obviously
-        hookAllMethods(notificationLongClickerClass, "onLongPress", new XC_MethodReplacement() {
+        hookAllMethods(notificationLongClickerClass, "onLongPress", new XC_MethodHook() {
             @SuppressLint("WrongConstant")
             @Override
-            protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
+            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                if (!XposedInit.getPrefs().getBoolean(PrefKeys.NOTIFICATION_LONG_CLICK, false)) {
+                    // not enabled
+                    return;
+                }
+
                 // the view is the expandable notification row
                 View expandableNotificationRow = (View) param.args[0];
 
@@ -156,13 +173,13 @@ final class SystemUiHooks {
                         expandableNotificationRow.getContext().sendBroadcast(new Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS));
 
                         log("opening floating window from notification long click");
-                        return true;
+                        param.setResult(true);
                     } catch (PendingIntent.CanceledException e) {
                         e.printStackTrace();
                     }
                 }
 
-                return false;
+                param.setResult(false);
             }
         });
     }
@@ -170,10 +187,17 @@ final class SystemUiHooks {
     private static void hookQuickSettings(XC_LoadPackage.LoadPackageParam lpparam) {
         Class<?> qsTileClass = findClass(QS_TILE, lpparam.classLoader);
 
-        hookAllMethods(qsTileClass, "handleLongClick", new XC_MethodReplacement() {
+        hookAllMethods(qsTileClass, "handleLongClick", new XC_MethodHook() {
             @SuppressLint("WrongConstant")
             @Override
-            protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
+            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                if (!XposedInit.getPrefs().getBoolean(PrefKeys.QUICK_SETTINGS_LONG_CLICK, false)) {
+                    log("quick settings long click disabled");
+                    return;
+                }
+
+                log("quick settings long click enabled");
+
                 Intent intent
                         = (Intent) callMethod(param.thisObject, "getLongClickIntent");
 
@@ -187,7 +211,7 @@ final class SystemUiHooks {
                 context.startActivity(intent);
                 context.sendBroadcast(new Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS));
 
-                return null;
+                param.setResult(null);
             }
         });
     }
@@ -338,10 +362,10 @@ final class SystemUiHooks {
     private static void hookSettingsClick(XC_LoadPackage.LoadPackageParam lpparam) {
         Class<?> qsFooterClass = findClass(QS_FOOTER, lpparam.classLoader);
 
-        hookAllMethods(qsFooterClass, "startSettingsActivity", new XC_MethodReplacement() {
+        hookAllMethods(qsFooterClass, "startSettingsActivity", new XC_MethodHook() {
             @SuppressLint("WrongConstant")
             @Override
-            protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
+            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                 // create intent
                 Intent intent = new Intent(Settings.ACTION_SETTINGS);
                 intent.addFlags(Flags.FLAG_FLOATING_WINDOW);
@@ -351,7 +375,7 @@ final class SystemUiHooks {
                 callMethod(activityStarter, "startActivity", intent, true);
 
                 log("launch settings activity floating");
-                return null;
+                param.setResult(null);
             }
         });
     }

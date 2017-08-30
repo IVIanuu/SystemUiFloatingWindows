@@ -1,3 +1,15 @@
 <resources>
     <string name="app_name">SystemUiFloatingWindows</string>
+
+    <string name="heads_up_click_title">Heads up click</string>
+    <string name="heads_up_click_summary">Launch the app in a floating window on heads up clicks.</string>
+
+    <string name="notification_click_title">Notifications click</string>
+    <string name="notification_click_summary">Open the notification in a floating window on click.</string>
+
+    <string name="notification_long_click_title">Notifications long click</string>
+    <string name="notification_long_click_summary">Open the notification in a floating window on long click.</string>
+
+    <string name="quick_settings_long_click_title">Quick Settings long click</string>
+    <string name="quick_settings_long_click_summary">Launch quick settings in a floating window</string>
 </resources>

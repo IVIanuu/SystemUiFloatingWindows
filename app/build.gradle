@@ -21,6 +21,10 @@ android {
 dependencies {
     // Android support
     implementation 'com.android.support:appcompat-v7:26.0.1'
+    implementation 'com.android.support:preference-v14:26.0.1'
+
+    // World Readable PrefKeys
+    implementation 'com.github.IVIanuu:WorldReadablePrefs:8df849d40e'
 
     // Xposed
     provided 'de.robv.android.xposed:api:82'
