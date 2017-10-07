@@ -2,6 +2,7 @@ package com.ivianuu.systemuifloatingwindows.xposed;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
@@ -15,6 +16,7 @@ import android.view.View;
 import android.view.animation.Interpolator;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.Toast;
 
 import com.ivianuu.systemuifloatingwindows.R;
 import com.ivianuu.systemuifloatingwindows.util.Flags;
@@ -39,14 +41,10 @@ import static de.robv.android.xposed.XposedHelpers.newInstance;
 final class SystemUiHooks {
 
     private static final String BASE_STATUS_BAR = "com.android.systemui.statusbar.BaseStatusBar";
-    private static final String FIXED_SIZE_IMAGE_VIEW = "com.android.systemui.recents.views.FixedSizeImageView";
-    private static final String INTERPOLATORS = "com.android.systemui.Interpolators";
     private static final String NOTIFICATION_CLICKER = "com.android.systemui.statusbar.BaseStatusBar$NotificationClicker";
     private static final String NOTIFICATION_CLICKER_RUNNABLE = "com.android.systemui.statusbar.BaseStatusBar$NotificationClicker$1";
     private static final String NOTIFICATION_LONG_CLICKER = "com.android.systemui.statusbar.BaseStatusBar$13";
-    private static final String QS_FOOTER = "com.android.systemui.qs.QSFooter";
     private static final String QS_TILE = "com.android.systemui.qs.QSTile";
-    private static final String TASK_VIEW_HEADER = "com.android.systemui.recents.views.TaskViewHeader";
 
     private static Object baseStatusBar;
     @SuppressLint("StaticFieldLeak")
@@ -59,17 +57,14 @@ final class SystemUiHooks {
         // heads up clicks
         hookHeadsUpClick(lpparam);
 
+        // notification click
+        hookNotificationClick(lpparam);
+
         // notification long click
         hookNotificationLongClick(lpparam);
 
         // quick settings
         hookQuickSettings(lpparam);
-
-        // recents
-        hookRecents(lpparam);
-
-        // settings click
-        hookSettingsClick(lpparam);
     }
 
     private static void hookHeadsUpClick(final XC_LoadPackage.LoadPackageParam lpparam) {
@@ -132,6 +127,61 @@ final class SystemUiHooks {
                         e.printStackTrace();
                     }
                 }
+            }
+        });
+    }
+
+    private static void hookNotificationClick(final XC_LoadPackage.LoadPackageParam lpparam) {
+        Class<?> baseStatusBarClass = findClass(BASE_STATUS_BAR, lpparam.classLoader);
+
+        hookAllMethods(baseStatusBarClass, "inflateViews", new XC_MethodHook() {
+            @Override
+            protected void afterHookedMethod(final MethodHookParam param) throws Throwable {
+                final Object entry = param.args[0];
+                final View row
+                        = (View) getObjectField(entry, "row");
+
+                row.setOnClickListener(new View.OnClickListener() {
+                    @SuppressLint("WrongConstant")
+                    @Override
+                    public void onClick(View view) {
+                        Object keyguardManager
+                                = getObjectField(param.thisObject, "mStatusBarKeyguardViewManager");
+                        boolean keyguardShowing
+                                = (boolean) callMethod(keyguardManager, "isShowing");
+                        if (XposedInit.getPrefs().getBoolean(PrefKeys.NOTIFICATION_CLICK, false)
+                                && !keyguardShowing) {
+                            StatusBarNotification sbn
+                                    = (StatusBarNotification) getObjectField(entry, "notification");
+                            Notification notification = sbn.getNotification();
+                            PendingIntent contentIntent = notification.contentIntent;
+                            if (contentIntent == null) {
+                                return;
+                            }
+
+                            // add overlay
+                            Intent overlay = new Intent();
+                            overlay.addFlags(Flags.FLAG_FLOATING_WINDOW);
+
+                            // open notification
+                            try {
+                                contentIntent.send(view.getContext(), 0, overlay);
+                                param.setResult(null);
+                                log("opening floating window from notification click");
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+
+                            // close system dialogs
+                            view.getContext().sendBroadcast(new Intent(Intent.ACTION_CLOSE_SYSTEM_DIALOGS));
+                        } else {
+                            // otherwise let the notification clicker handle the click
+                            View.OnClickListener notificationClicker
+                                    = (View.OnClickListener) getObjectField(param.thisObject, "mNotificationClicker");
+                            notificationClicker.onClick(view);
+                        }
+                    }
+                });
             }
         });
     }
@@ -216,167 +266,4 @@ final class SystemUiHooks {
         });
     }
 
-    private static final int FLOATING_BUTTON_ID = 1;
-    private static void hookRecents(XC_LoadPackage.LoadPackageParam lpparam) {
-        Class<?> taskViewHeaderClass = findClass(TASK_VIEW_HEADER, lpparam.classLoader);
-
-        final Class<?> fixedSizeImageViewClass = findClass(FIXED_SIZE_IMAGE_VIEW, lpparam.classLoader);
-
-        hookAllMethods(taskViewHeaderClass, "onFinishInflate", new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(final MethodHookParam param) throws Throwable {
-                Context context
-                        = (Context) callMethod(param.thisObject, "getContext");
-
-                ImageView floatingButton
-                        = (ImageView) newInstance(fixedSizeImageViewClass, context);
-                floatingButton.setId(FLOATING_BUTTON_ID);
-                int padding = Util.convertDpToPixel(context, 12);
-                floatingButton.setPadding(padding, padding, padding, padding);
-
-                TypedValue outValue = new TypedValue();
-                context.getTheme().resolveAttribute(android.R.attr.selectableItemBackground, outValue, true);
-                floatingButton.setBackgroundResource(outValue.resourceId);
-
-                Context packageContext
-                        = context.createPackageContext("com.ivianuu.systemuifloatingwindows", 0);
-                floatingButton.setImageDrawable(packageContext.getDrawable(R.drawable.ic_recents_floating_light));
-
-                int size = Util.convertDpToPixel(context, 48);
-                FrameLayout.LayoutParams lp
-                        = new FrameLayout.LayoutParams(size, size);
-
-                lp.setMarginEnd(size);
-                lp.gravity = Gravity.END | Gravity.CENTER;
-
-                floatingButton.setVisibility(View.INVISIBLE);
-
-                final FrameLayout thisObject = (FrameLayout) param.thisObject;
-                thisObject.addView(floatingButton, lp);
-
-                floatingButton.setOnClickListener(new View.OnClickListener() {
-                    @SuppressLint("WrongConstant")
-                    @Override
-                    public void onClick(View view) {
-                        // get intent
-                        Object task = getObjectField(thisObject, "mTask");
-                        Object key = getObjectField(task, "key");
-                        final Intent baseIntent = (Intent) getObjectField(key, "baseIntent");
-
-                        // dismiss recents
-                        final Activity recentsActivity = (Activity) thisObject.getContext();
-                        recentsActivity.finish();
-
-                        thisObject.post(new Runnable() {
-                            @Override
-                            public void run() {
-                                // Launch task in floating mode
-                                baseIntent.setFlags(Flags.FLAG_FLOATING_WINDOW);
-                                recentsActivity.startActivity(baseIntent);
-                                log("launch floating from recents");
-                            }
-                        });
-                    }
-                });
-            }
-        });
-
-        hookAllMethods(taskViewHeaderClass, "bindToTask", new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                boolean useLight
-                        = (boolean) getObjectField(param.args[0], "useLightOnPrimaryColor");
-                Context context
-                        = (Context) getObjectField(param.thisObject, "mContext");
-                FrameLayout thisObject
-                        = (FrameLayout) param.thisObject;
-                ImageView floatingButton = thisObject.findViewById(FLOATING_BUTTON_ID);
-
-                Context packageContext
-                        = context.createPackageContext("com.ivianuu.systemuifloatingwindows", 0);
-
-                Drawable drawable =
-                        packageContext.getDrawable(
-                                useLight ? R.drawable.ic_recents_floating_light : R.drawable.ic_recents_floating_dark);
-
-                floatingButton.setImageDrawable(drawable);
-            }
-        });
-
-        final Class<?> interpolatorsClass = findClass(INTERPOLATORS, lpparam.classLoader);
-
-        hookAllMethods(taskViewHeaderClass, "startNoUserInteractionAnimation", new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                FrameLayout thisObject
-                        = (FrameLayout) param.thisObject;
-                ImageView floatingButton = thisObject.findViewById(FLOATING_BUTTON_ID);
-                floatingButton.setVisibility(View.VISIBLE);
-                floatingButton.setClickable(true);
-                if (floatingButton.getVisibility() == View.VISIBLE) {
-                    int id = thisObject.getResources().getIdentifier(
-                            "recents_task_enter_from_app_duration", "integer", "com.android.systemui");
-                    int duration = thisObject.getResources().getInteger(id);
-
-                    Interpolator interpolator
-                            = (Interpolator) getStaticObjectField(interpolatorsClass, "FAST_OUT_LINEAR_IN");
-
-                    floatingButton.animate().cancel();
-                    floatingButton.animate()
-                            .alpha(1f)
-                            .setDuration(duration)
-                            .setInterpolator(interpolator)
-                            .start();
-                } else {
-                    floatingButton.setAlpha(1f);
-                }
-            }
-        });
-
-        hookAllMethods(taskViewHeaderClass, "setNoUserInteractionState", new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                FrameLayout thisObject
-                        = (FrameLayout) param.thisObject;
-                ImageView floatingButton = thisObject.findViewById(FLOATING_BUTTON_ID);
-                floatingButton.setVisibility(View.VISIBLE);
-                floatingButton.animate().cancel();
-                floatingButton.setAlpha(1f);
-                floatingButton.setClickable(true);
-            }
-        });
-
-        hookAllMethods(taskViewHeaderClass, "resetNoUserInteractionState", new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                FrameLayout thisObject
-                        = (FrameLayout) param.thisObject;
-                ImageView floatingButton = thisObject.findViewById(FLOATING_BUTTON_ID);
-                floatingButton.setVisibility(View.INVISIBLE);
-                floatingButton.setAlpha(0f);
-                floatingButton.setClickable(false);
-            }
-        });
-    }
-
-    private static void hookSettingsClick(XC_LoadPackage.LoadPackageParam lpparam) {
-        Class<?> qsFooterClass = findClass(QS_FOOTER, lpparam.classLoader);
-
-        hookAllMethods(qsFooterClass, "startSettingsActivity", new XC_MethodHook() {
-            @SuppressLint("WrongConstant")
-            @Override
-            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                // create intent
-                Intent intent = new Intent(Settings.ACTION_SETTINGS);
-                intent.addFlags(Flags.FLAG_FLOATING_WINDOW);
-
-                // start floating
-                Object activityStarter = getObjectField(param.thisObject, "mActivityStarter");
-                callMethod(activityStarter, "startActivity", intent, true);
-
-                log("launch settings activity floating");
-                param.setResult(null);
-            }
-        });
-    }
 }

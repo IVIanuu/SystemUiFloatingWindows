@@ -9,6 +9,12 @@
 
     <android.support.v7.preference.CheckBoxPreference
         android:defaultValue="false"
+        android:key="notification_click"
+        android:summary="@string/notification_click_summary"
+        android:title="@string/notification_click_title" />
+
+    <android.support.v7.preference.CheckBoxPreference
+        android:defaultValue="false"
         android:key="notification_long_click"
         android:summary="@string/notification_long_click_summary"
         android:title="@string/notification_long_click_title" />
